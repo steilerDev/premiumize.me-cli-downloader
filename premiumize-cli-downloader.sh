@@ -8,6 +8,11 @@ LINKS_FILE="temp.links"
 DLC_FILE=$1
 SEED="2or48h"
 
+if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
+    echo "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
+    cd $DEFAULT_DOWNLOAD_LOCATION
+fi
+
 if [ -e $TEMP_FILE ] ; then
     echo "Deleting temp file $TEMP_FILE"
     rm $TEMP_FILE
