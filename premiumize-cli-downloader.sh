@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source "/opt/premiumize-cli-downloader.conf"
+source "/opt/premiumize.me-cli-downloader/premiumize-cli-downloader.conf"
 
 BOUNDARY="---------------------------312412633113176"
 TEMP_FILE="temp.file"
@@ -10,6 +10,8 @@ SEED="2or48h"
 
 if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
     echo "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
+    mv $1 $DEFAULT_DOWNLOAD_LOCATION/
+    DLC_FILE=$(basename $1)
     cd $DEFAULT_DOWNLOAD_LOCATION
 fi
 
@@ -94,6 +96,9 @@ while read -r file ; do
     echo "  Removing $file"
     rm $file
 done < "${TEMP_FILE}"
+
+echo "  Removing DLC file $DLC_FILE"
+rm $DLC_FILE
 
 if [ -e $TEMP_FILE ] ; then
     echo "  Removing temp file $TEMP_FILE"
