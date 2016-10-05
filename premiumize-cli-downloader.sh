@@ -4,8 +4,8 @@ source "/opt/premiumize.me-cli-downloader/premiumize-cli-downloader.conf"
 
 DLC_FILE=$1
 BOUNDARY="---------------------------312412633113176"
-TEMP_FILE=".premiumize.file"
-LINKS_FILE=".premiumize.links"
+TEMP_FILE=".premiumize.$$.file"
+LINKS_FILE=".premiumize.$$.links"
 SEED="2or48h"
 
 if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
@@ -110,7 +110,7 @@ if [ -e $TEMP_FILE ] ; then
     while read -r file ; do
         if [ -e $file ] ; then
             echo "  Removing $file"
-            rm $file
+#            rm $file
         else
             echo "$file does not exist, unable to delete"
         fi
