@@ -89,39 +89,53 @@ if [ ! -e $LINKS_FILE ] ; then
     echo "Unable to retrieve premium links!"
     exit
 else 
-    rm $TEMP_FILE
     echo "Getting file names and downloading files..."
     while read -r URL FILENAME; do
-        echo $FILENAME >> $TEMP_FILE
         echo "  Downloading file ${FILENAME}..."
         curl $URL -o $FILENAME -#
     done < "${LINKS_FILE}"
 
-    if [ ! -e $FILENAME ] ; then
-        echo "$FILENAME does not exist, unable to extract"
-        exit
-    else
-        echo "Trying to extract files..."
-        if [[ $FILENAME == *".rar" ]] ; then
-            echo "  Archive is rar, extracting..."
-            unrar e -o+  $FILENAME
+    rm ${TEMP_FILE}
+
+    echo "Trying to extract files..."
+    
+    while [ -s ${LINKS_FILE} ] ; do
+        read -r URL FILENAME < ${LINKS_FILE}
+        echo "  Processing $FILENAME"
+        if [ ! -e $FILENAME ] ; then
+            echo "   $FILENAME does not exist, unable to extract"
+        elif [[ $FILENAME == *".rar" ]] ; then
+            # Getting all files belonging to archive
+            unrar l -v $FILENAME | \
+                grep '^Volume' | \
+                sed -e 's/Volume //g' | \
+                while read -r line; do
+                    echo "  $line is part of ${FILENAME}'s archive"
+                    echo ${line} >> ${TEMP_FILE}
+                    sed -i '/'"${line}"'/d' ${LINKS_FILE}
+                done
+            echo "   Extracting ${FILENAME}..."
+            unrar e -o+ $FILENAME
+        else
+            echo "   Archive (${FILENAME}) is not rar"
         fi
-    fi
+        sed -i '/'"${FILENAME}"'/d' ${LINKS_FILE}
+    done
 fi
 
 echo "Finished, just cleaning up..."
-#if [ -e $TEMP_FILE ] ; then
-#    while read -r url file ; do
-#        if [ -e $file ] ; then
-#            echo "  Removing $file"
-#            rm $file
-#        else
-#            echo "$file does not exist, unable to delete"
-#        fi
-#    done < "${LINKS_FILE}"
-#else
-#    echo "$TEMP_FILE does not exist!"
-#fi
+if [ -e $TEMP_FILE ] ; then
+    while read -r file ; do
+        if [ -e $file ] ; then
+            echo "  Removing $file"
+            rm $file
+        else
+            echo "  $file does not exist, unable to delete"
+        fi
+    done < "${TEMP_FILE}"
+else
+    echo "  $TEMP_FILE does not exist!"
+fi
 
 if [ -e $DLC_FILE ] ; then
     echo "  Removing DLC file $DLC_FILE"
