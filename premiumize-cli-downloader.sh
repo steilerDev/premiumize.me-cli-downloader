@@ -7,6 +7,7 @@ BOUNDARY="---------------------------312412633113176"
 TEMP_FILE=".premiumize.$$.file"
 LINKS_FILE=".premiumize.$$.links"
 SEED="2or48h"
+MAX_PARALLEL_DL=3
 
 if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
     echo "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
@@ -91,8 +92,12 @@ if [ ! -e $LINKS_FILE ] ; then
 else 
     echo "Getting file names and downloading files..."
     while read -r URL FILENAME; do
+        while [ "$(jobs | wc -l)" -ge "$MAX_PARALLEL_DL" ] ; do
+            sleep 10
+        done
+
         echo "  Downloading file ${FILENAME}..."
-        curl $URL -o $FILENAME -#
+        curl $URL -o $FILENAME -# &
     done < "${LINKS_FILE}"
 
     rm ${TEMP_FILE}
