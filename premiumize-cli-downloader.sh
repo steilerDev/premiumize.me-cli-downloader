@@ -70,9 +70,14 @@ while read -r line; do
                     -H "Connection: keep-alive" \
                     -H "Cookie: login=$USER_ID:$USER_PIN" \
                     -H "Content-Type: application/x-www-form-urlencoded; charset=UTF-8" \
-                    --data "src=${line}&seed=$SEED" | \
-        jq '.location' | \
-        sed -e 's/^"//g' | sed -e 's/"$//g' >> $LINKS_FILE
+                    --data "src=${line}&seed=$SEED" > $TEMP_FILE
+
+        cat $TEMP_FILE | \
+            jq '.location' | \
+           sed -e 's/^"//g' | sed -e 's/"$//g' | tr '\n' ' ' >> $LINKS_FILE
+        cat $TEMP_FILE | \
+            jq '.filename' | \
+            sed -e 's/^"//g' | sed -e 's/"$//g' >> $LINKS_FILE
     fi
 done  
 
@@ -86,11 +91,10 @@ if [ ! -e $LINKS_FILE ] ; then
 else 
     rm $TEMP_FILE
     echo "Getting file names and downloading files..."
-    while read -r url ; do
-        FILENAME=$(echo $url | sed -e 's/^.*&f=//g')
+    while read -r URL FILENAME; do
         echo $FILENAME >> $TEMP_FILE
         echo "  Downloading file ${FILENAME}..."
-        curl $url -o $FILENAME -#
+        curl $URL -o $FILENAME -#
     done < "${LINKS_FILE}"
 
     if [ ! -e $FILENAME ] ; then
@@ -106,18 +110,18 @@ else
 fi
 
 echo "Finished, just cleaning up..."
-if [ -e $TEMP_FILE ] ; then
-    while read -r file ; do
-        if [ -e $file ] ; then
-            echo "  Removing $file"
+#if [ -e $TEMP_FILE ] ; then
+#    while read -r url file ; do
+#        if [ -e $file ] ; then
+#            echo "  Removing $file"
 #            rm $file
-        else
-            echo "$file does not exist, unable to delete"
-        fi
-    done < "${TEMP_FILE}"
-else
-    echo "$TEMP_FILE does not exist!"
-fi
+#        else
+#            echo "$file does not exist, unable to delete"
+#        fi
+#    done < "${LINKS_FILE}"
+#else
+#    echo "$TEMP_FILE does not exist!"
+#fi
 
 if [ -e $DLC_FILE ] ; then
     echo "  Removing DLC file $DLC_FILE"
