@@ -1,5 +1,4 @@
-#!/bin/bash
-
+#!/bin/bash 
 source "/opt/premiumize.me-cli-downloader/premiumize-cli-downloader.conf"
 
 DLC_FILE=$1
@@ -7,7 +6,7 @@ BOUNDARY="---------------------------312412633113176"
 TEMP_FILE=".premiumize.$$.file"
 LINKS_FILE=".premiumize.$$.links"
 SEED="2or48h"
-MAX_PARALLEL_DL=3
+MAX_PARALLEL_DL=6
 
 if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
     echo "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
@@ -82,6 +81,12 @@ while read -r line; do
     fi
 done  
 
+downloadFile () {
+    echo "  Downloading file ${2}..."
+    curl $1 -o $2 -# > /dev/null 2>&1
+    echo "  Finished downloading ${2}!"
+}
+
 #
 # Iterating over links file (if it exists), downloading each file and extracting them
 # Todo: Spawn curl process with `&` and wait for them to finish
@@ -96,9 +101,11 @@ else
             sleep 10
         done
 
-        echo "  Downloading file ${FILENAME}..."
-        curl $URL -o $FILENAME -# &
+        downloadFile $URL $FILENAME &
+
     done < "${LINKS_FILE}"
+    echo "  Waiting for downloads to finish..."
+    wait
 
     rm ${TEMP_FILE}
 
@@ -132,8 +139,8 @@ echo "Finished, just cleaning up..."
 if [ -e $TEMP_FILE ] ; then
     while read -r file ; do
         if [ -e $file ] ; then
-            echo "  Removing $file"
-            rm $file
+            echo "  WOULD Remove $file"
+#            rm $file
         else
             echo "  $file does not exist, unable to delete"
         fi
