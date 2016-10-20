@@ -1,3 +1,6 @@
 USER_ID="<USERID>"
 USER_PIN="<USERPIN>"
 DEFAULT_DOWNLOAD_LOCATION="/path/to/folder/"
+MAX_PARALLEL_DL=6
+# Rolling log file, make sure user has write rights to directory
+LOG_FILE="/var/log/premiumize-me-cli-downloader.log"

@@ -14,4 +14,4 @@ I recommend cloning the repository into `/opt/`. In order to configure the scrip
 You can specify a default download location in this file, by setting the variable `$DEFAULT_DOWNLOAD_LOCATION`.
 
 # Prerequisits
-The script only requires `curl` (version: 7.26.0) for the web interactions, `jq` (version: jq-1.4-1-e73951f) for JSON processing and `unrar` (version 4.10) for extraction. I tested the script with the annotated versions on a Debian 7 machine, that does not mean that they are explicitly required. 
+The script only requires `curl` (version: 7.26.0) for the web interactions, `jq` (version: jq-1.4-1-e73951f) for JSON processing and `unrar` (version 4.10) for extraction. I tested the script with the annotated versions on a Debian 7 machine, that does not mean that they are explicitly required. Savelog
