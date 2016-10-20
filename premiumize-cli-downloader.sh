@@ -148,8 +148,8 @@ download_file () {
     log "- Downloading file ${CFC}/${TFC} (${NAME})..."
     curl $URL -o $NAME -# > /dev/null 2>&1
 
-    if [ "$(stat --printf="%s" $NAME)" -eq "$SIZE" ] ; then
-        log "! Failed downloading ${CFC}/${TFC} (${NAME}), because size is not as expected (${SIZE} vs. $(stat --printf="%s" $NAME)"
+    if [ "$(stat --printf="%s" $NAME)" -ne "$SIZE" ] ; then
+        log "! Failed downloading ${CFC}/${TFC} (${NAME}), because size is not as expected (${SIZE} vs. $(stat --printf="%s" $NAME))"
         sed -i '/'"${FILENAME}"'/d' ${LINKS_FILE}
         echo "$O_URL $URL $SIZE $NAME" >> $FAILED_FILE
     else
