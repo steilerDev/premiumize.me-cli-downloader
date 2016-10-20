@@ -5,6 +5,7 @@ DLC_FILE=".premiumize.$$.dlc"
 BOUNDARY="---------------------------312412633113176"
 TEMP_FILE=".premiumize.$$.file"
 LINKS_FILE=".premiumize.$$.links"
+FAILED_FILE="premiumize.$$.failed.links"
 SEED="2or48h"
 MAX_PARALLEL_DL=6
 LOG_FILE="/var/log/premiumize-me-cli-downloader.log"
@@ -13,29 +14,45 @@ main () {
     savelog -q $LOG_FILE
 
     log "Starting processing $1"
-
-    if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
-        log "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
-        mv $1 $DEFAULT_DOWNLOAD_LOCATION/$DLC_FILE
-        cd $DEFAULT_DOWNLOAD_LOCATION
-    else
-        mv $1 ./$DLC_FILE
-    fi
-
+    
     if [ -e $TEMP_FILE ] ; then
         log "Deleting temp file $TEMP_FILE"
         rm $TEMP_FILE
     fi
 
-    if [ -e $LINKS_FILE ] ; then
-        log "Deleting links file $LINKS_FILE"
-        rm $LINKS_FILE
+    if [[ $1 == *".dlc" ]] ; then
+        if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
+            log "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
+            cp $1 $DEFAULT_DOWNLOAD_LOCATION/$DLC_FILE
+            cd $DEFAULT_DOWNLOAD_LOCATION
+        else
+            cp $1 ./$DLC_FILE
+        fi
+
+        if [ -e $LINKS_FILE ] ; then
+            log "Deleting links file $LINKS_FILE"
+            rm $LINKS_FILE
+        fi
+        decrypt_dlc
+    elif [[ $1 == *".links" ]] ; then
+        if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
+            log "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
+            mv $1 $DEFAULT_DOWNLOAD_LOCATION/$LINKS_FILE
+            cd $DEFAULT_DOWNLOAD_LOCATION
+        else
+            mv $1 ./$LINKS_FILE
+        fi
+    else
+        log "Stated file is neither a DLC nor a links file, can not continue processing!"
+        exit
     fi
 
-    decrypt_dlc
     download_file_list
     cleanup
     log "Finished processing $1!"
+    if [ -e $FAILED_FILE ] ; then
+        log "!! Some downloads failed, check $FAILED_FILE for retrying"
+    fi
 }
 
 decrypt_dlc () {
@@ -93,12 +110,22 @@ decrypt_dlc () {
             logf "Got response for file #${TOTAL_FILE_COUNT}: "
             logf "$(cat $TEMP_FILE)"
 
-            cat $TEMP_FILE | \
-                jq '.location' | \
-                sed -e 's/^"//g' | sed -e 's/"$//g' | tr '\n' ' ' >> $LINKS_FILE
-            cat $TEMP_FILE | \
-                jq '.filename' | \
-                sed -e 's/^"//g' | sed -e 's/"$//g' >> $LINKS_FILE
+            if [[ "$(cat $TEMP_FILE | jq '.status')" == *"success"* ]] ; then
+                echo -n "$line " >> $LINKS_FILE
+                cat $TEMP_FILE | \
+                    jq '.location' | \
+                    sed -e 's/^"//g' | sed -e 's/"$//g' | tr '\n' ' ' >> $LINKS_FILE
+
+                cat $TEMP_FILE | \
+                    jq '.filesize' | \
+                    sed -e 's/^"//g' | sed -e 's/"$//g' | tr '\n' ' ' >> $LINKS_FILE
+
+                cat $TEMP_FILE | \
+                    jq '.filename' | \
+                    sed -e 's/^"//g' | sed -e 's/"$//g' >> $LINKS_FILE
+            else
+                log "Unable to get premium link for ${line}!"
+            fi
 
         fi
     done  
@@ -109,9 +136,25 @@ decrypt_dlc () {
 }
 
 download_file () {
-    log "- Downloading file ${1}/${2} (${4})..."
-    curl $3 -o $4 -# > /dev/null 2>&1
-    log "- Finished downloading ${1}/${2} (${4})!"
+    URL=$4
+    O_URL=$5
+    CFC=$1
+    TFC=$2
+    SIZE=$3
+    NAME=$6
+
+    echo "URL: $URL || O_URL: $O_URL || CFC: $CFC || TFC: $TFC || Size: $SIZE || Name: $NAME"
+
+    log "- Downloading file ${CFC}/${TFC} (${NAME})..."
+    curl $URL -o $NAME -# > /dev/null 2>&1
+
+    if [ "$(stat --printf="%s" $NAME)" -eq "$SIZE" ] ; then
+        log "! Failed downloading ${CFC}/${TFC} (${NAME}), because size is not as expected (${SIZE} vs. $(stat --printf="%s" $NAME)"
+        sed -i '/'"${FILENAME}"'/d' ${LINKS_FILE}
+        echo "$O_URL $URL $SIZE $NAME" >> $FAILED_FILE
+    else
+        log "- Finished downloading ${CFC}/${TFC} (${NAME})!"
+    fi
 }
 
 #
@@ -128,25 +171,25 @@ download_file_list () {
         TOTAL_FILE_COUNT=$(cat $LINKS_FILE | wc -l)
         CURRENT_FILE_COUNT=0
 
-        while read -r URL FILENAME; do
+        while read -r OURL URL SIZE FILENAME; do
             while [ "$(jobs | wc -l)" -ge "$MAX_PARALLEL_DL" ] ; do
                 sleep 10
             done
 
             ((CURRENT_FILE_COUNT++))
-            download_file "$CURRENT_FILE_COUNT" "$TOTAL_FILE_COUNT" "$URL" "$FILENAME" &
+            download_file "$CURRENT_FILE_COUNT" "$TOTAL_FILE_COUNT" "$SIZE" "$URL" "$OURL" "$FILENAME" &
 
         done < "${LINKS_FILE}"
         sleep 2
         log "All Downloads queued, waiting for them to finish..."
         wait
 
-        rm ${TEMP_FILE}
+        > ${TEMP_FILE}
 
         log "Trying to extract files..."
         
         while [ -s ${LINKS_FILE} ] ; do
-            read -r URL FILENAME < ${LINKS_FILE}
+            read -r OURL URL SIZE FILENAME < ${LINKS_FILE}
             log "- Processing $FILENAME"
             if [ ! -e $FILENAME ] ; then
                 log "-- $FILENAME does not exist, unable to extract"
@@ -202,6 +245,7 @@ cleanup () {
             fi
         done < "${TEMP_FILE}"
         log "- Removing temp file ${TEMP_FILE}"
+        rm ${TEMP_FILE}
     else
         log "- $TEMP_FILE does not exist, can't remove it or adjacent archives!"
     fi
