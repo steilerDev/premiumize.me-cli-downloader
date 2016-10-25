@@ -24,10 +24,10 @@ main () {
     # Switching to default download location and renaming files accordingly
     if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
         log "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
-        cp $1 $DEFAULT_DOWNLOAD_LOCATION/$SOURCE_FILE
+        mv $1 $DEFAULT_DOWNLOAD_LOCATION/$SOURCE_FILE
         cd $DEFAULT_DOWNLOAD_LOCATION
     else
-        cp $1 ./$SOURCE_FILE
+        mv $1 ./$SOURCE_FILE
     fi
 
     # Filling $LINKS_FILE at this point
@@ -262,7 +262,7 @@ cleanup () {
 
     if [ -e $SOURCE_FILE ] ; then
         log "- Removing source file $SOURCE_FILE"
-        rm $DLC_FILE
+        rm $SOURCE_FILE
     fi
 
     if [ -e $LINKS_FILE ] ; then
