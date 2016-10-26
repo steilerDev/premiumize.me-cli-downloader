@@ -17,10 +17,6 @@ main () {
     debug "$(date)"
     log "Starting processing $1"
 
-    # Making sure nothing comes into our way    
-    > $TEMP_FILE
-    > $LINKS_FILE
-
     # Switching to default download location and renaming files accordingly
     if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
         log "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
@@ -29,6 +25,10 @@ main () {
     else
         mv $1 ./$SOURCE_FILE
     fi
+    
+    # Making sure nothing comes into our way    
+    > $TEMP_FILE
+    > $LINKS_FILE
 
     # Filling $LINKS_FILE at this point
     if [[ $1 == *".dlc" ]] ; then
