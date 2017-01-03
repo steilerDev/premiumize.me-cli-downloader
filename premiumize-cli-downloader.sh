@@ -6,68 +6,78 @@ BOUNDARY="---------------------------312412633113176"
 SEED="2or48h"
 
 # File variables
-SOURCE_FILE=".premiumize.$$.source"
 TEMP_FILE=".premiumize.$$.file"
 LINKS_FILE=".premiumize.$$.links"
 FAILED_FILE="premiumize.$$.failed.links"
+TOTAL_FILE_COUNT=0
 
 main () {
     savelog -q $LOG_FILE
 
     debug "$(date)"
-    log "Starting processing $1"
+    debug "Got the following files: $@"
+   
+    # Making sure there is nothing there 
+    > $LINKS_FILE
+    > $FAILED_FILE
 
+    for INPUT in "$@" ; do
+        log "Starting processing $INPUT"
+        > $TEMP_FILE
+
+        # Filling $LINKS_FILE at this point
+        if [[ $INPUT == *".dlc" ]] ; then
+            decrypt_dlc $INPUT
+        elif [[ $INPUT == *".links" ]] ; then
+            while read -r URL _; do 
+                if [[ $URL != "#"* ]] ; then
+                    get_premium_link $URL
+                fi
+            done < "${INPUT}"
+        elif [[ $INPUT == *".premlinks" ]] ; then
+            cat $INPUT >> $LINKS_FILE
+        else
+            log "\"$INPUT\" is neither a DLC nor a links file, can not process it!"
+            continue
+        fi
+        #log "Finished processing ${INPUT}, removing file!"
+        #rm $INPUT
+    done
+    
     # Switching to default download location and renaming files accordingly
     if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
         log "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
-        mv $1 $DEFAULT_DOWNLOAD_LOCATION/$SOURCE_FILE
+        mv $LINKS_FILE $DEFAULT_DOWNLOAD_LOCATION/
+        mv $FAILED_FILE $DEFAULT_DOWNLOAD_LOCATION/
+        rm $TEMP_FILE
         cd $DEFAULT_DOWNLOAD_LOCATION
-    else
-        mv $1 ./$SOURCE_FILE
     fi
     
-    # Making sure nothing comes into our way    
-    > $TEMP_FILE
-    > $LINKS_FILE
-
-    # Filling $LINKS_FILE at this point
-    if [[ $1 == *".dlc" ]] ; then
-        decrypt_dlc
-    elif [[ $1 == *".links" ]] ; then
-        while read -r URL _; do 
-            ((TOTAL_FILE_COUNT++))
-            get_premium_link $URL $TOTAL_FILE_COUNT
-        done < "$SOURCE_FILE"
-    else
-        log "Stated file is neither a DLC nor a links file, can not continue processing!"
-        exit
-    fi
-    
-    > $TEMP_FILE
-
     # Downloading based on $LINKS_FILE
     download_file_list
 
     # Removing temp files, as well as processed archives
     cleanup
 
-    log "Finished processing $1!"
+    log "Finished processing $@!"
     if [ -e $FAILED_FILE ] ; then
+        (echo "# Failed file list for $@" && cat ${FAILED_FILE}) > ${FAILED_FILE}
         log "!! Some downloads failed, check $FAILED_FILE for retrying"
     fi
 }
 
+# Clears TEMP_FILE, appends LINKS_FILE
 decrypt_dlc () {
 
     #
     # Creating DLC decrypt payload
     #
-
+    > $TEMP_FILE
     echo "--$BOUNDARY" >> $TEMP_FILE
-    echo "Content-Disposition: form-data; name=\"src\"; filename=\"${SOURCE_FILE}.dlc\"" >> $TEMP_FILE
+    echo "Content-Disposition: form-data; name=\"src\"; filename=\"${1}.dlc\"" >> $TEMP_FILE
     echo "Content-Type: application/octet-stream" >> $TEMP_FILE
     echo >> $TEMP_FILE
-    cat $SOURCE_FILE >> $TEMP_FILE
+    cat $1 >> $TEMP_FILE
     echo >> $TEMP_FILE
     echo "--$BOUNDARY" >> $TEMP_FILE
     echo "Content-Disposition: form-data; name=\"seed\"" >> $TEMP_FILE
@@ -85,7 +95,7 @@ decrypt_dlc () {
     #
     # Decrypting dlc and getting premium link list
     #
-    log "Decrypting DLC..."
+    log "Decrypting DLC (${1})..."
     curl -s "https://www.premiumize.me/api/transfer/create" \
                 -H "Host: www.premiumize.me" \
                 -H "Accept: */*" \
@@ -96,14 +106,15 @@ decrypt_dlc () {
                 --data-binary @$TEMP_FILE | \
     jq -r -c '.content[]' | \
         while read -r line; do 
-            ((TOTAL_FILE_COUNT++))
-            get_premium_link $line $TOTAL_FILE_COUNT
+            get_premium_link $line
         done  
 }
 
+# Clears TEMP_FILE, appends LINKS_FILE
 get_premium_link () {
     URL=$1
-    TOTAL_FILE_COUNT=$2
+    ((TOTAL_FILE_COUNT++))
+    > $TEMP_FILE
     if [[ $URL == "http://ul.to"* ||  $URL == "http://uploaded.net"* ]] ; then
         log "- Getting premium link (#${TOTAL_FILE_COUNT}) for ${URL}..."
         curl -s "https://www.premiumize.me/api/transfer/create" \
@@ -145,6 +156,7 @@ get_premium_link () {
 # Iterating over links file (if it exists), downloading each file and extracting them
 # Todo: Spawn curl process with `&` and wait for them to finish
 #
+# Removes single line from LINKS_FILE and appends it to FAILED_FILE (in case download did not succeed)
 download_file_list () {
     if [ ! -e $LINKS_FILE ] ; then
         log "Unable to retrieve premium links!"
@@ -171,6 +183,7 @@ download_file_list () {
     fi
 }
 
+# Removes single line from LINKS_FILE and appends it to FAILED_FILE (in case download did not succeed)
 download_file () {
     URL=$4
     O_URL=$5
@@ -196,11 +209,24 @@ download_file () {
     fi
 }
 
+# Clears tempfile, replaces LINKS_FILE and empties it
 extract_files () {
     log "Trying to extract files..."
-    
+  
+    log "- Preparing extraction..." 
+    # Sorting files by filename, means we will start with the first archive, subsequential archives do not contain inforamtion about preceding archives, resulting in re-doing the extraction when not starting with the first archive
+
+    debug "Sorting ${LINKS_FILE}..."
+    > ${TEMP_FILE} 
+    while read -r OURL URL SIZE FILENAME; do
+        echo $FILENAME >> ${TEMP_FILE}
+    done < "${LINKS_FILE}"
+    sort ${TEMP_FILE} -o ${LINKS_FILE}
+    > ${TEMP_FILE} 
+    debug "${LINKS_FILE} sorted!"
+
     while [ -s ${LINKS_FILE} ] ; do
-        read -r OURL URL SIZE FILENAME < ${LINKS_FILE}
+        read -r FILENAME < ${LINKS_FILE}
         log "- Processing $FILENAME"
         if [ ! -e $FILENAME ] ; then
             log "-- $FILENAME does not exist, unable to extract"
@@ -258,11 +284,6 @@ cleanup () {
         rm ${TEMP_FILE}
     else
         log "- $TEMP_FILE does not exist, can't remove it or adjacent archives!"
-    fi
-
-    if [ -e $SOURCE_FILE ] ; then
-        log "- Removing source file $SOURCE_FILE"
-        rm $SOURCE_FILE
     fi
 
     if [ -e $LINKS_FILE ] ; then
