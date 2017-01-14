@@ -9,6 +9,7 @@ SEED="2or48h"
 TEMP_FILE=".premiumize.$$.file"
 LINKS_FILE=".premiumize.$$.links"
 FAILED_FILE="premiumize.$$.failed.links"
+TEMP_FAILED_FILE=".premiumize.$$.failed.links"
 TOTAL_FILE_COUNT=0
 
 main () {
@@ -18,40 +19,60 @@ main () {
     debug "Got the following files: $@"
    
     # Making sure there is nothing there 
-    > $LINKS_FILE
-    > $FAILED_FILE
+    if [ -e $LINKS_FILE ] ; then
+        > $LINKS_FILE
+    fi
+
+    if [ -e $TEMP_FAILED_FILE ] ; then
+        > $TEMP_FAILED_FILE
+    fi
 
     for INPUT in "$@" ; do
-        log "Starting processing $INPUT"
-        > $TEMP_FILE
+        if [[ $INPUT != "-"* ]] ; then
+            log "Starting processing $INPUT"
+            > $TEMP_FILE
 
-        # Filling $LINKS_FILE at this point
-        if [[ $INPUT == *".dlc" ]] ; then
-            decrypt_dlc $INPUT
-        elif [[ $INPUT == *".links" ]] ; then
-            while read -r URL _; do 
-                if [[ $URL != "#"* ]] ; then
-                    get_premium_link $URL
-                fi
-            done < "${INPUT}"
-        elif [[ $INPUT == *".premlinks" ]] ; then
-            cat $INPUT >> $LINKS_FILE
-        else
-            log "\"$INPUT\" is neither a DLC nor a links file, can not process it!"
-            continue
+            # Filling $LINKS_FILE at this point
+            if [[ $INPUT == *".dlc" ]] ; then
+                decrypt_dlc $INPUT
+            elif [[ $INPUT == *".links" ]] ; then
+                while read -r URL _; do 
+                    if [[ $URL != "#"* ]] ; then
+                        get_premium_link $URL
+                    fi
+                done < "${INPUT}"
+            elif [[ $INPUT == *".premlinks" ]] ; then
+                cat $INPUT >> $LINKS_FILE
+            else
+                log "\"$INPUT\" is neither a DLC nor a links file, can not process it!"
+                continue
+            fi
+            log "Finished processing ${INPUT}, removing file!"
+            rm $INPUT
         fi
-        #log "Finished processing ${INPUT}, removing file!"
-        #rm $INPUT
     done
     
     # Switching to default download location and renaming files accordingly
     if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
         log "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
         mv $LINKS_FILE $DEFAULT_DOWNLOAD_LOCATION/
-        mv $FAILED_FILE $DEFAULT_DOWNLOAD_LOCATION/
+        if [ -e $TEMP_FAILED_FILE ] ; then
+            mv $TEMP_FAILED_FILE $DEFAULT_DOWNLOAD_LOCATION/
+        fi
         rm $TEMP_FILE
         cd $DEFAULT_DOWNLOAD_LOCATION
     fi
+
+    while getopts ":e" opt; do
+        case $opt in
+            e)
+                vim $LINKS_FILE 
+                ;;
+            \?)
+                echo "Invalid option: -$OPTARG" >&2
+                ;;
+        esac
+    done
     
     # Downloading based on $LINKS_FILE
     download_file_list
@@ -60,8 +81,9 @@ main () {
     cleanup
 
     log "Finished processing $@!"
-    if [ -e $FAILED_FILE ] ; then
-        (echo "# Failed file list for $@" && cat ${FAILED_FILE}) > ${FAILED_FILE}
+    if [ -e $TEMP_FAILED_FILE ] ; then
+        (echo "# Failed file list for $@" && cat ${TEMP_FAILED_FILE}) > ${FAILED_FILE}
+        rm $TEMP_FAILED_FILE
         log "!! Some downloads failed, check $FAILED_FILE for retrying"
     fi
 }
@@ -144,7 +166,7 @@ get_premium_link () {
                 sed -e 's/^"//g' | sed -e 's/"$//g' >> $LINKS_FILE
         else
             log "! Unable to get premium link (#${TOTAL_FILE_COUNT}) for ${URL}!"
-            echo "$URL" >> $FAILED_FILE
+            echo "$URL" >> $TEMP_FAILED_FILE
         fi
     else
         log "! Link is not supported: ${URL}!"
@@ -156,7 +178,7 @@ get_premium_link () {
 # Iterating over links file (if it exists), downloading each file and extracting them
 # Todo: Spawn curl process with `&` and wait for them to finish
 #
-# Removes single line from LINKS_FILE and appends it to FAILED_FILE (in case download did not succeed)
+# Removes single line from LINKS_FILE and appends it to TEMP_FAILED_FILE (in case download did not succeed)
 download_file_list () {
     if [ ! -e $LINKS_FILE ] ; then
         log "Unable to retrieve premium links!"
@@ -183,7 +205,7 @@ download_file_list () {
     fi
 }
 
-# Removes single line from LINKS_FILE and appends it to FAILED_FILE (in case download did not succeed)
+# Removes single line from LINKS_FILE and appends it to TEMP_FAILED_FILE (in case download did not succeed)
 download_file () {
     URL=$4
     O_URL=$5
@@ -201,7 +223,7 @@ download_file () {
         # If the download failed, the file will be removed from the link list (in order to not be respected during extraction later)
         sed -i '/'"${FILENAME}"'/d' ${LINKS_FILE}
         # The file's metadata will be written to a file in order to be retried later
-        echo "$O_URL $URL $SIZE $NAME" >> $FAILED_FILE
+        echo "$O_URL $URL $SIZE $NAME" >> $TEMP_FAILED_FILE
         # The remaining data that was downloaded will be removed
         rm $FILENAME
     else
