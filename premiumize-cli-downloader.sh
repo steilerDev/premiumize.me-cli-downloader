@@ -263,8 +263,8 @@ extract_files () {
             fi
             # Getting all files belonging to archive, in order to delete them later and not process them again
             unrar l -v $FILENAME | \
-                grep '^Volume' | \
-                sed -e 's/Volume //g' | \
+                grep '^Archive' | \
+                sed -e 's/Archive: //g' | \
                 while read -r line; do
                     log "--- $line is part of ${FILENAME}'s archive"
 
