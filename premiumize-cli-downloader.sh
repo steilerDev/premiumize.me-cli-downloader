@@ -12,6 +12,12 @@ FAILED_FILE="premiumize.$$.failed.links"
 TEMP_FAILED_FILE=".premiumize.$$.failed.links"
 TOTAL_FILE_COUNT=0
 
+# Color variables
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+RED='\033[1;31m'
+NC='\033[0m'
+
 main () {
     savelog -q $LOG_FILE
 
@@ -29,7 +35,7 @@ main () {
 
     for INPUT in "$@" ; do
         if [[ $INPUT != "-"* ]] ; then
-            log "Starting processing $INPUT"
+            log_start "Starting processing $INPUT"
             > $TEMP_FILE
 
             # Filling $LINKS_FILE at this point
@@ -44,10 +50,10 @@ main () {
             elif [[ $INPUT == *".premlinks" ]] ; then
                 cat $INPUT >> $LINKS_FILE
             else
-                log "\"$INPUT\" is neither a DLC nor a links file, can not process it!"
+                log_error "\"$INPUT\" is neither a DLC nor a links file, can not process it!"
                 continue
             fi
-            log "Finished processing ${INPUT}, removing file!"
+            log_finish "Finished processing ${INPUT}, removing file!"
             rm $INPUT
         fi
     done
@@ -80,11 +86,11 @@ main () {
     # Removing temp files, as well as processed archives
     cleanup
 
-    log "Finished processing $@!"
+    log_finish "Finished processing $@!"
     if [ -e $TEMP_FAILED_FILE ] ; then
         (echo "# Failed file list for $@" && cat ${TEMP_FAILED_FILE}) > ${FAILED_FILE}
         rm $TEMP_FAILED_FILE
-        log "!! Some downloads failed, check $FAILED_FILE for retrying"
+        log_error "!! Some downloads failed, check $FAILED_FILE for retrying"
     fi
 }
 
@@ -117,7 +123,7 @@ decrypt_dlc () {
     #
     # Decrypting dlc and getting premium link list
     #
-    log "Decrypting DLC (${1})..."
+    log_start "Decrypting DLC (${1})..."
     curl -s "https://www.premiumize.me/api/transfer/create" \
                 -H "Host: www.premiumize.me" \
                 -H "Accept: */*" \
@@ -138,7 +144,7 @@ get_premium_link () {
     ((TOTAL_FILE_COUNT++))
     > $TEMP_FILE
     if [[ $URL == "http://ul.to"* ||  $URL == "http://uploaded.net"* ]] ; then
-        log "- Getting premium link (#${TOTAL_FILE_COUNT}) for ${URL}..."
+        log_start "- Getting premium link (#${TOTAL_FILE_COUNT}) for ${URL}..."
         curl -s "https://www.premiumize.me/api/transfer/create" \
                     -H "Host: www.premiumize.me" \
                     -H "Accept: */*" \
@@ -165,11 +171,11 @@ get_premium_link () {
                 jq '.filename' | \
                 sed -e 's/^"//g' | sed -e 's/"$//g' >> $LINKS_FILE
         else
-            log "! Unable to get premium link (#${TOTAL_FILE_COUNT}) for ${URL}!"
+            log_error "! Unable to get premium link (#${TOTAL_FILE_COUNT}) for ${URL}!"
             echo "$URL" >> $TEMP_FAILED_FILE
         fi
     else
-        log "! Link is not supported: ${URL}!"
+        log_error "! Link is not supported: ${URL}!"
     fi
 }
 
@@ -181,7 +187,7 @@ get_premium_link () {
 # Removes single line from LINKS_FILE and appends it to TEMP_FAILED_FILE (in case download did not succeed)
 download_file_list () {
     if [ ! -e $LINKS_FILE ] ; then
-        log "Unable to retrieve premium links!"
+        log_error "Unable to retrieve premium links!"
         return
     else 
         log "Downloading files..."
@@ -214,12 +220,12 @@ download_file () {
     SIZE=$3
     NAME=$6
 
-    log "- Downloading file ${CFC}/${TFC} (${NAME})..."
+    log_start "- Downloading file ${CFC}/${TFC} (${NAME})..."
     curl $URL -o $NAME -# > /dev/null 2>&1
 
     ACTUAL_SIZE=$(stat --printf="%s" $NAME)
     if [ "$ACTUAL_SIZE" -ne "$SIZE" ] ; then
-        log "! Failed downloading ${CFC}/${TFC} (${NAME}), because size is not as expected (${SIZE} vs. ${ACTUAL_SIZE})"
+        log_error "! Failed downloading ${CFC}/${TFC} (${NAME}), because size is not as expected (${SIZE} vs. ${ACTUAL_SIZE})"
         # If the download failed, the file will be removed from the link list (in order to not be respected during extraction later)
         sed -i '/'"${FILENAME}"'/d' ${LINKS_FILE}
         # The file's metadata will be written to a file in order to be retried later
@@ -227,7 +233,7 @@ download_file () {
         # The remaining data that was downloaded will be removed
         rm $FILENAME
     else
-        log "- Finished downloading ${CFC}/${TFC} (${NAME})!"
+        log_finish "- Finished downloading ${CFC}/${TFC} (${NAME})!"
     fi
 }
 
@@ -249,16 +255,16 @@ extract_files () {
 
     while [ -s ${LINKS_FILE} ] ; do
         read -r FILENAME < ${LINKS_FILE}
-        log "- Processing $FILENAME"
+        log_start "- Processing $FILENAME"
         if [ ! -e $FILENAME ] ; then
-            log "-- $FILENAME does not exist, unable to extract"
+            log_error "-- $FILENAME does not exist, unable to extract"
             sed -i '/'"${FILENAME}"'/d' ${LINKS_FILE}
         elif [[ $FILENAME == *".rar" ]] ; then
             log "-- Extracting ${FILENAME}..."
             unrar e -o+ $FILENAME | tr $'\r' $'\n' >> $LOG_FILE 2>&1
             UNRAR_EXIT="${PIPESTATUS[0]}"
             if [ "$UNRAR_EXIT" -ne "0" ] ; then
-                log "--- Extraction of $FILENAME failed, not removing!"
+                log_error "--- Extraction of $FILENAME failed, not removing!"
                 sed -i '/'"${FILENAME}"'/d' ${LINKS_FILE}
             fi
             # Getting all files belonging to archive, in order to delete them later and not process them again
@@ -275,8 +281,9 @@ extract_files () {
                     # Removing line from links file means, that the file will not be processed during extraction again
                     sed -i '/'"${line}"'/d' ${LINKS_FILE}
                 done
+            log_finish "- Finished processing $FILENAME"
         else
-            log "- Archive (${FILENAME}) is not rar"
+            log_error "- Archive (${FILENAME}) is not rar"
             sed -i '/'"${FILENAME}"'/d' ${LINKS_FILE}
         fi
     done
@@ -312,6 +319,21 @@ cleanup () {
         log "- Removing links file $LINKS_FILE"
         rm $LINKS_FILE
     fi
+}
+
+log_start () {
+    echo -e "${CYAN}$@${NC}"
+    debug $@
+}
+
+log_finish () {
+    echo -e "${GREEN}$@${NC}"
+    debug $@
+}
+
+log_error () {
+    echo -e "${RED}$@${NC}"
+    debug $@
 }
 
 log () {
