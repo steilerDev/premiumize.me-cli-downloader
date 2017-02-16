@@ -11,6 +11,8 @@ LINKS_FILE=".premiumize.$$.links"
 FAILED_FILE="premiumize.$$.failed.links"
 TEMP_FAILED_FILE=".premiumize.$$.failed.links"
 TOTAL_FILE_COUNT=0
+RETRY=false
+EDIT=false
 
 # Color variables
 GREEN='\033[0;32m'
@@ -23,6 +25,12 @@ main () {
 
     debug "$(date)"
     debug "Got the following files: $@"
+    
+    # Switching to default download location and renaming files accordingly
+    if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
+        log "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
+        cd $DEFAULT_DOWNLOAD_LOCATION
+    fi
    
     # Making sure there is nothing there 
     if [ -e $LINKS_FILE ] ; then
@@ -32,7 +40,37 @@ main () {
     if [ -e $TEMP_FAILED_FILE ] ; then
         > $TEMP_FAILED_FILE
     fi
+    
+    while getopts "er" opt; do
+        case $opt in
+            e)
+                debug "Edit mode on"
+                EDIT=true
+                ;;
+            r)
+                debug "Retry mode on"
+                RETRY=true
+                ;;
+            \?)
+                echo "Invalid option: -$OPTARG" >&2
+                ;;
+        esac
+    done
+  
+    # Create $LINKS_FILE 
+    process_input $@
+    
+    # Downloading based on $LINKS_FILE
+    download_file_list
 
+    # Removing temp files, as well as processed archives
+    cleanup
+
+    # Checks for failed downloads and retries if user wants it
+    finish
+}
+
+process_input () {
     for INPUT in "$@" ; do
         if [[ $INPUT != "-"* ]] ; then
             log_start "Starting processing $INPUT"
@@ -57,40 +95,9 @@ main () {
             rm $INPUT
         fi
     done
-    
-    # Switching to default download location and renaming files accordingly
-    if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
-        log "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
-        mv $LINKS_FILE $DEFAULT_DOWNLOAD_LOCATION/
-        if [ -e $TEMP_FAILED_FILE ] ; then
-            mv $TEMP_FAILED_FILE $DEFAULT_DOWNLOAD_LOCATION/
-        fi
-        rm $TEMP_FILE
-        cd $DEFAULT_DOWNLOAD_LOCATION
-    fi
 
-    while getopts ":e" opt; do
-        case $opt in
-            e)
-                vim $LINKS_FILE 
-                ;;
-            \?)
-                echo "Invalid option: -$OPTARG" >&2
-                ;;
-        esac
-    done
-    
-    # Downloading based on $LINKS_FILE
-    download_file_list
-
-    # Removing temp files, as well as processed archives
-    cleanup
-
-    log_finish "Finished processing $@!"
-    if [ -e $TEMP_FAILED_FILE ] ; then
-        (echo "# Failed file list for $@" && cat ${TEMP_FAILED_FILE}) > ${FAILED_FILE}
-        rm $TEMP_FAILED_FILE
-        log_error "!! Some downloads failed, check $FAILED_FILE for retrying"
+    if [ "$EDIT" = true ] ; then
+        vim $LINKS_FILE
     fi
 }
 
@@ -261,12 +268,25 @@ extract_files () {
             sed -i '/'"${FILENAME}"'/d' ${LINKS_FILE}
         elif [[ $FILENAME == *".rar" ]] ; then
             log "-- Extracting ${FILENAME}..."
-            unrar e -o+ $FILENAME | tr $'\r' $'\n' >> $LOG_FILE 2>&1
-            UNRAR_EXIT="${PIPESTATUS[0]}"
-            if [ "$UNRAR_EXIT" -ne "0" ] ; then
-                log_error "--- Extraction of $FILENAME failed, not removing!"
+            UNRAR_ERR=false
+
+            # Check if all volumes are there
+            if [ ! unrar l -v $FILENAME 2>&1 | grep -q "Cannot find volume" ] ; then
+                log_error "--- Archive not complete, aborting"
+                UNRAR_ERR=true
+            else
+                unrar e -o+ $FILENAME | tr $'\r' $'\n' >> $LOG_FILE 2>&1
+                UNRAR_EXIT="${PIPESTATUS[0]}"
+                if [ "$UNRAR_EXIT" -ne "0" ] ; then
+                    log_error "--- Extraction of $FILENAME failed!"
+                    UNRAR_ERR=true
+                fi
+            fi
+
+            if [ "$UNRAR_ERR" = true ] ; then
                 sed -i '/'"${FILENAME}"'/d' ${LINKS_FILE}
             fi
+
             # Getting all files belonging to archive, in order to delete them later and not process them again
             unrar l -v $FILENAME | \
                 grep '^Archive' | \
@@ -274,7 +294,7 @@ extract_files () {
                 while read -r line; do
                     log "--- $line is part of ${FILENAME}'s archive"
 
-                    if [ "$UNRAR_EXIT" -eq "0" ] ; then
+                    if [ "$UNRAR_ERR" = false ] ; then
                         # Adding the filename to the temp file will mark it for removal later, only doing so, if the extraction was successful
                         echo ${line} >> ${TEMP_FILE}
                     fi
@@ -318,6 +338,23 @@ cleanup () {
     if [ -e $LINKS_FILE ] ; then
         log "- Removing links file $LINKS_FILE"
         rm $LINKS_FILE
+    fi
+}
+
+finish () {
+    log_finish "Finished processing $@!"
+    if [ -e $TEMP_FAILED_FILE ] ; then
+        (echo "# Failed file list for $@" && cat ${TEMP_FAILED_FILE}) > ${FAILED_FILE}
+        rm $TEMP_FAILED_FILE
+        log_error "!! Some downloads failed, check $FAILED_FILE for retrying"
+        if [ "$RETRY" = true ] ; then
+            > $LINKS_FILE
+            > $TEMP_FAILED_FILE
+            process_input $FAILED_FILE
+            download_file_list
+            cleanup
+            finish
+        fi
     fi
 }
 
