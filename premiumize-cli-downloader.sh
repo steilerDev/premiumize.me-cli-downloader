@@ -12,7 +12,10 @@ FAILED_FILE="premiumize.$$.failed.links"
 TEMP_FAILED_FILE=".premiumize.$$.failed.links"
 TOTAL_FILE_COUNT=0
 RETRY=false
+RETRY_COUNT=0
 EDIT=false
+# Keep track of source folder
+SOURCE_DIR=""
 
 # Color variables
 GREEN='\033[0;32m'
@@ -24,11 +27,16 @@ main () {
     savelog -q $LOG_FILE
 
     debug "$(date)"
+    if [ $# -eq 0 ]; then
+        log "No files provided, scanning current directory for DLC files..."
+        set -- "$(ls *.dlc *.links)"
+    fi
     debug "Got the following files: $@"
     
     # Switching to default download location and renaming files accordingly
     if [ ! -z $DEFAULT_DOWNLOAD_LOCATION ] ; then
         log "Saving files to $DEFAULT_DOWNLOAD_LOCATION"
+        SOURCE_DIR="$(pwd)/"
         cd $DEFAULT_DOWNLOAD_LOCATION
     fi
    
@@ -73,11 +81,15 @@ main () {
 process_input () {
     for INPUT in "$@" ; do
         if [[ $INPUT != "-"* ]] ; then
+            INPUT="${SOURCE_DIR}${INPUT}"
             log_start "Starting processing $INPUT"
             > $TEMP_FILE
 
             # Filling $LINKS_FILE at this point
-            if [[ $INPUT == *".dlc" ]] ; then
+            if [ ! -e $INPUT ] ; then
+                log_error "Unable to process ${INPUT}: File does not exist"
+                continue
+            elif [[ $INPUT == *".dlc" ]] ; then
                 decrypt_dlc $INPUT
             elif [[ $INPUT == *".links" ]] ; then
                 while read -r URL _; do 
@@ -271,7 +283,7 @@ extract_files () {
             UNRAR_ERR=false
 
             # Check if all volumes are there
-            if [ ! unrar l -v $FILENAME 2>&1 | grep -q "Cannot find volume" ] ; then
+            if unrar l -v $FILENAME 2>&1 | grep -q "Cannot find volume" ; then
                 log_error "--- Archive not complete, aborting"
                 UNRAR_ERR=true
             else
@@ -288,7 +300,7 @@ extract_files () {
             fi
 
             # Getting all files belonging to archive, in order to delete them later and not process them again
-            unrar l -v $FILENAME | \
+            unrar l -v $FILENAME 2>&1 | \
                 grep '^Archive' | \
                 sed -e 's/Archive: //g' | \
                 while read -r line; do
@@ -348,8 +360,12 @@ finish () {
         rm $TEMP_FAILED_FILE
         log_error "!! Some downloads failed, check $FAILED_FILE for retrying"
         if [ "$RETRY" = true ] ; then
+            ((RETRY_COUNT++))
+            log "Trying to download failed files (Retry #${RETRY_COUNT})..."
             > $LINKS_FILE
             > $TEMP_FAILED_FILE
+            # Source dir needs to be cleared, since FAILED FILE is in the other dir
+            SOURCE_DIR=""
             process_input $FAILED_FILE
             download_file_list
             cleanup

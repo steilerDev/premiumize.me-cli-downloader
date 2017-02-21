@@ -8,7 +8,11 @@ Invoke the script using `./premiumize-cli-downloader.sh <Links.dlc>`. The files 
 
 Alternatively the script can be invoked with a `.links` file, where each line starts with the URL of the download links.
 
-Additionally failed download links -either due to problems getting the premium link or problems during the download - will be stored in a `premiumize.<PID>.failed.links` file, which can be used with this script to retry the download.
+If no argument is given, the script will scan the current directory for `*.dlc` and `*.links` file and process them.
+
+Optionally the `-e` flag can be provided and will open `vim` before starting the download, giving you the opportunity to delete unwanted files from the download list.
+
+Additionally failed download links -either due to problems getting the premium link or problems during the download - will be stored in a `premiumize.<PID>.failed.links` file, which can be used with this script to retry the download. If the `-r` flag is given, the script will retry downloading failed files until success.
 
 Currently the script only grabs download links from `uploaded.to`, modify the `get_premium_link` function to change this behaviour. Similiarily only rar archives are currently support (see the `extract_files` function).
 
@@ -18,4 +22,4 @@ I recommend cloning the repository into `/opt/`. In order to configure the scrip
 You can specify a default download location in this file, by setting the variable `$DEFAULT_DOWNLOAD_LOCATION`. Multiple parallel downloads are possible as well, set the variable `$MAX_PARALLEL_DL` in your config script to an integer that fits your needs.
 
 # Prerequisits
-The script only requires `curl` (version: 7.26.0) for the web interactions, `jq` (version: jq-1.4-1-e73951f) for JSON processing and `unrar` (version 4.10) for extraction. I tested the script with the annotated versions on a Debian 7 machine, that does not mean that they are explicitly required. Additionally `savelog` is used for a rotating log file, check if your machine can use this mechanism (otherwise you will get an error and all your logs will be put into a single file).
+The script only requires `curl` (version: 7.26.0) for the web interactions, `jq` (version: jq-1.4-1-e73951f) for JSON processing and `unrar` (version 4.10) for extraction. I tested the script with the annotated versions on a Debian 8 machine, that does not mean that they are explicitly required. Additionally `savelog` is used for a rotating log file, check if your machine can use this mechanism (otherwise you will get an error and all your logs will be put into a single file).
