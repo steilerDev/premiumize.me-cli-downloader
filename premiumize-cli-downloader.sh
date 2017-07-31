@@ -162,7 +162,7 @@ get_premium_link () {
     URL=$1
     ((TOTAL_FILE_COUNT++))
     > $TEMP_FILE
-    if [[ $URL == "http://ul.to"* ||  $URL == "http://uploaded.net"* ]] ; then
+    if [[ $URL == "http://ul.to"* ||  $URL == "http://uploaded.net"* ||  $URL == "https://openload.co/"* ]] ; then
         log_start "- Getting premium link (#${TOTAL_FILE_COUNT}) for ${URL}..."
         curl -s "https://www.premiumize.me/api/transfer/create" \
                     -H "Host: www.premiumize.me" \
