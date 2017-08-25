@@ -4,6 +4,7 @@ source "/opt/premiumize.me-cli-downloader/premiumize-cli-downloader.conf"
 # Variables required for http requests
 BOUNDARY="---------------------------312412633113176"
 SEED="2or48h"
+CSRF_TOKEN=""
 
 # File variables
 TEMP_FILE=".premiumize.$$.file"
@@ -64,7 +65,10 @@ main () {
                 ;;
         esac
     done
-  
+    
+    # Refreshing CSRF Token 
+    get_csrf_token
+
     # Create $LINKS_FILE 
     process_input $@
     
@@ -113,6 +117,20 @@ process_input () {
     fi
 }
 
+# Dynamically setting the csrf token, since this is something premiumize.me now needs.
+get_csrf_token () {
+    log_start "Getting CSRF token..."
+    CSRF_TOKEN=$(curl -s 'https://www.premiumize.me/account' \
+                    -H 'accept: */*;' \
+                    -H 'authority: www.premiumize.me' \
+                    -H 'cookie: login=846260004%3Aww2ajd4scbxe65w6' \
+                    -H 'referer: https://www.premiumize.me/login' --head | \
+                grep -Eo "Csrf-token=[^;]*" | \
+                sed -e 's/^Csrf-token=//g'
+    )
+    log_finish "Got CSRF token: $CSRF_TOKEN"
+}
+
 # Clears TEMP_FILE, appends LINKS_FILE
 decrypt_dlc () {
 
@@ -133,7 +151,7 @@ decrypt_dlc () {
     echo "--$BOUNDARY" >> $TEMP_FILE
     echo "Content-Disposition: form-data; name=\"password\"" >> $TEMP_FILE
     echo >> $TEMP_FILE
-    echo >> $TEMP_FILE
+    echo "undefined"  >> $TEMP_FILE
     echo "--$BOUNDARY--" >> $TEMP_FILE
 
     debug "Using payload: "
@@ -148,7 +166,8 @@ decrypt_dlc () {
                 -H "Accept: */*" \
                 -H "Referer: https://www.premiumize.me/downloader" \
                 -H "Connection: keep-alive" \
-                -H "Cookie: login=$USER_ID:$USER_PIN" \
+                -H "Cookie: login=${USER_ID}%3A${USER_PIN}; Csrf-token=$CSRF_TOKEN" \
+                -H "x-csrf-token: $CSRF_TOKEN" \
                 -H "Content-Type: multipart/form-data; boundary=$BOUNDARY" \
                 --data-binary @$TEMP_FILE | \
     jq -r -c '.content[]' | \
@@ -162,14 +181,15 @@ get_premium_link () {
     URL=$1
     ((TOTAL_FILE_COUNT++))
     > $TEMP_FILE
-    if [[ $URL == "http://ul.to"* ||  $URL == "http://uploaded.net"* ]] ; then
+    if [[ $URL == "http://ul.to"* ||  $URL == "http://uploaded.net"* || $URL == "https://openload.co"* ]] ; then
         log_start "- Getting premium link (#${TOTAL_FILE_COUNT}) for ${URL}..."
         curl -s "https://www.premiumize.me/api/transfer/create" \
                     -H "Host: www.premiumize.me" \
                     -H "Accept: */*" \
                     -H "Referer: https://www.premiumize.me/downloader" \
                     -H "Connection: keep-alive" \
-                    -H "Cookie: login=$USER_ID:$USER_PIN" \
+                    -H "Cookie: login=${USER_ID}%3A${USER_PIN}; Csrf-token=$CSRF_TOKEN" \
+                    -H "x-csrf-token: $CSRF_TOKEN" \
                     -H "Content-Type: application/x-www-form-urlencoded; charset=UTF-8" \
                     --data "src=${URL}&seed=$SEED" > $TEMP_FILE
 
