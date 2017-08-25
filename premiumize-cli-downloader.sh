@@ -310,7 +310,7 @@ extract_files () {
                 log_error "--- Archive not complete, aborting"
                 UNRAR_ERR=true
             else
-                unrar e -o+ $FILENAME | tr $'\r' $'\n' >> $LOG_FILE 2>&1
+                unrar x -o+ $FILENAME | tr $'\r' $'\n' >> $LOG_FILE 2>&1
                 UNRAR_EXIT="${PIPESTATUS[0]}"
                 if [ "$UNRAR_EXIT" -ne "0" ] ; then
                     log_error "--- Extraction of $FILENAME failed!"
