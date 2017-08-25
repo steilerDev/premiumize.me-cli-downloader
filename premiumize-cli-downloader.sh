@@ -172,7 +172,7 @@ decrypt_dlc () {
                 --data-binary @$TEMP_FILE | \
     jq -r -c '.content[]' | \
         while read -r line; do 
-            get_premium_link $line
+            get_premium_link $line && break
         done  
 }
 
@@ -209,12 +209,15 @@ get_premium_link () {
             cat $TEMP_FILE | \
                 jq '.filename' | \
                 sed -e 's/^"//g' | sed -e 's/"$//g' >> $LINKS_FILE
+            return 0
         else
             log_error "! Unable to get premium link (#${TOTAL_FILE_COUNT}) for ${URL}!"
             echo "$URL" >> $TEMP_FAILED_FILE
+            return 1
         fi
     else
         log_error "! Link is not supported: ${URL}!"
+        return 1
     fi
 }
 
