@@ -119,16 +119,16 @@ process_input () {
 
 # Dynamically setting the csrf token, since this is something premiumize.me now needs.
 get_csrf_token () {
-    log_start "Getting CSRF token..."
+    log_start "Getting XSS token..."
     CSRF_TOKEN=$(curl -s 'https://www.premiumize.me/account' \
                     -H 'accept: */*;' \
                     -H 'authority: www.premiumize.me' \
                     -H 'cookie: login=846260004%3Aww2ajd4scbxe65w6' \
                     -H 'referer: https://www.premiumize.me/login' --head | \
-                grep -Eo "Csrf-token=[^;]*" | \
-                sed -e 's/^Csrf-token=//g'
+                grep -Eo "xss-token=[^;]*" | \
+                sed -e 's/^xss-token=//g'
     )
-    log_finish "Got CSRF token: $CSRF_TOKEN"
+    log_finish "Got XXS token: $CSRF_TOKEN"
 }
 
 # Clears TEMP_FILE, appends LINKS_FILE
@@ -166,14 +166,15 @@ decrypt_dlc () {
                 -H "Accept: */*" \
                 -H "Referer: https://www.premiumize.me/downloader" \
                 -H "Connection: keep-alive" \
-                -H "Cookie: login=${USER_ID}%3A${USER_PIN}; Csrf-token=$CSRF_TOKEN" \
+                -H "Cookie: login=${USER_ID}%3A${USER_PIN}; xss-token=$CSRF_TOKEN" \
                 -H "x-csrf-token: $CSRF_TOKEN" \
                 -H "Content-Type: multipart/form-data; boundary=$BOUNDARY" \
                 --data-binary @$TEMP_FILE | \
     jq -r -c '.content[]' | \
         while read -r line; do 
-            get_premium_link $line && break
+            get_premium_link $line
         done  
+exit
 }
 
 # Clears TEMP_FILE, appends LINKS_FILE
@@ -188,7 +189,7 @@ get_premium_link () {
                     -H "Accept: */*" \
                     -H "Referer: https://www.premiumize.me/downloader" \
                     -H "Connection: keep-alive" \
-                    -H "Cookie: login=${USER_ID}%3A${USER_PIN}; Csrf-token=$CSRF_TOKEN" \
+                    -H "Cookie: login=${USER_ID}%3A${USER_PIN}; xss-token=$CSRF_TOKEN" \
                     -H "x-csrf-token: $CSRF_TOKEN" \
                     -H "Content-Type: application/x-www-form-urlencoded; charset=UTF-8" \
                     --data "src=${URL}&seed=$SEED" > $TEMP_FILE
